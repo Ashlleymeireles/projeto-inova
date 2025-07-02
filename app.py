@@ -5,7 +5,13 @@ import os
 import json
 
 app = Flask(__name__)
-app.config['DATABASE'] = 'techlibrary.db'
+app.config['DATABASE'] = 'database.db'
+db_path = os.getenv('SQLITE_PATH', 'database.db')  # pega variável ou usa default
+
+conn = sqlite3.connect(db_path)
+print(f"Conectado ao banco SQLite em {db_path}")
+
+
 
 # =============================================
 # CONFIGURAÇÃO DO BANCO DE DADOS
