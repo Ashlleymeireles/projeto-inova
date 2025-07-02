@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime
 import os
 import json
+import random
 
 app = Flask(__name__)
 app.config['DATABASE'] = 'database.db'
@@ -252,7 +253,9 @@ def chat():
 # INICIALIZAÇÃO
 # =============================================
 
+PORT = int(os.getenv('PORT', 5000))
+
 if __name__ == '__main__':
     if not os.path.exists(app.config['DATABASE']):
         init_db()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=PORT)
