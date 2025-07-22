@@ -25,18 +25,48 @@ def get_db():
     return g.db
 
 @app.teardown_appcontext
-def close_db(e=None):
+def close_db(error):
     db = g.pop('db', None)
     if db is not None:
         db.close()
 
-def init_db():
+def criar_tabelas():
     with app.app_context():
         db = get_db()
-        with app.open_resource('schema.sql', mode='r') as f:
-            db.cursor().executescript(f.read())
-        db.commit()
+        db.executescript('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                telefone TEXT
+            );
 
+            CREATE TABLE IF NOT EXISTS livros (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                titulo TEXT NOT NULL,
+                autor TEXT NOT NULL,
+                categoria TEXT NOT NULL,
+                cidade TEXT NOT NULL,
+                biblioteca TEXT NOT NULL,
+                secao TEXT NOT NULL,
+                localizacao TEXT,
+                descricao TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS emprestimos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                livro_id INTEGER NOT NULL,
+                data_emprestimo TEXT NOT NULL,
+                data_devolucao TEXT NOT NULL,
+                status TEXT DEFAULT 'Pendente',
+                multa REAL DEFAULT 0,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+                FOREIGN KEY (livro_id) REFERENCES livros(id)
+            );
+        ''')
+        db.commit()
+        print("Tabelas criadas com sucesso.")
 # =============================================
 # ROTAS PRINCIPAIS
 # =============================================
@@ -75,8 +105,9 @@ def usuarios():
 def livros():
     db = get_db()
     if request.method == 'POST':
-        data = request.get_json()
         try:
+            data = request.get_json()
+            print("Dados recebidos:", data)  # Para debug
             db.execute('''
                 INSERT INTO livros 
                 (titulo, autor, categoria, cidade, biblioteca, secao, localizacao, descricao) 
@@ -89,12 +120,14 @@ def livros():
             db.commit()
             return jsonify({"message": "Livro cadastrado com sucesso!"}), 201
         except Exception as e:
+            print("Erro ao cadastrar livro:", e)
             return jsonify({"error": str(e)}), 400
     
+    # Método GET
     livros = db.execute('SELECT * FROM livros').fetchall()
-    if not livros:
-        return jsonify([])  # Retorna array vazio se não houver livros
-    return jsonify([dict(l) for l in livros])
+    lista = [dict(l) for l in livros]
+    return jsonify(lista)  # Sempre retorna lista, mesmo vazia
+
 
 @app.route('/api/livros/<int:id>', methods=['DELETE'])
 def deletar_livro(id):
@@ -150,23 +183,24 @@ def devolver_emprestimo(id):
         emprestimo = db.execute('SELECT * FROM emprestimos WHERE id = ?', [id]).fetchone()
         if not emprestimo:
             return jsonify({"error": "Empréstimo não encontrado"}), 404
-        
+
         data_devolucao = datetime.strptime(emprestimo['data_devolucao'], '%Y-%m-%d').date()
         hoje = datetime.now().date()
         multa = max(0, (hoje - data_devolucao).days) * 3 if hoje > data_devolucao else 0
-        
+
         db.execute(
             'UPDATE emprestimos SET status = ?, multa = ? WHERE id = ?',
             ['Devolvido', multa, id]
         )
         db.commit()
-        
+
         return jsonify({
             "message": "Livro devolvido com sucesso!",
             "multa": multa
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
 
 @app.route('/api/emprestimos/<int:id>', methods=['DELETE'])
 def excluir_emprestimo(id):
@@ -256,6 +290,8 @@ def chat():
 PORT = int(os.getenv('PORT', 5000))
 
 if __name__ == '__main__':
+    with app.app_context():
+        criar_tabelas()
     if not os.path.exists(app.config['DATABASE']):
         init_db()
     app.run(host='0.0.0.0', port=PORT)
